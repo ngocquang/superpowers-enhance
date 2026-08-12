@@ -1,0 +1,26 @@
+{
+  "description": "Injects the matching *-enhance skill right after its base superpowers skill is invoked, and re-arms the injection after compaction",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/skill-enhance.py\""
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/skill-enhance.py\""
+          }
+        ]
+      }
+    ]
+  }
+}
