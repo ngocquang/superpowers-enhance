@@ -1,13 +1,14 @@
 # superpowers-enhance
 
-An override layer for Jesse Vincent's [superpowers](https://github.com/obra/superpowers) skills.
+A supplement layer for Jesse Vincent's [superpowers](https://github.com/obra/superpowers) skills.
 
 Superpowers skills are good defaults, but two of them leave room where a stricter
-rule works better in practice. This plugin closes that room. It does not ask the
-model to consider an improvement — a hook injects the override into context
-immediately after the base skill is read, marked as mandatory.
+rule works better in practice. This plugin fills that room. It changes nothing in
+the superpowers skills themselves and never asks you to skip a step of one — a
+hook injects the supplement into context immediately after the base skill is read,
+marked as required for the steps it names.
 
-## What it overrides
+## What it adds
 
 | Base skill invoked | Enhance skill injected |
 |---|---|
@@ -21,7 +22,7 @@ immediately after the base skill is read, marked as mandatory.
 `superpowers:brainstorming` requires one clarifying question per message. On a
 design with a dozen open decisions that is a dozen round-trips.
 
-This skill replaces **only** that phase. It models the design as a tree and asks
+This skill supplies **only** that step. It models the design as a tree and asks
 every question on the *frontier* — the decisions whose prerequisites are already
 settled — in a single round via `AskUserQuestion`, with a recommended answer as
 the first option. Questions downstream of an open decision wait for the next
@@ -37,12 +38,25 @@ gate that blocks any code before an approved design.
 checkout when worktree setup fails. In a sandbox that clause fires often, and
 plan execution quietly lands in the root checkout.
 
-This skill removes the escape hatch: no isolated workspace, no execution. It also
-specifies the setup that the base skill leaves open — a project-local
-`./.worktrees/` root, a branch cut from the freshly-fetched integration branch,
-and a dependency step where the lockfile decides between a real install and a
-symlink (pnpm always installs; a symlinked `node_modules` writes *through* the
-link into the root checkout).
+This skill declines that allowance: no isolated workspace, no execution. Consent
+still belongs to the user — a worktree they *decline* is a decision the skill
+follows; a worktree that *fails* is not.
+
+It also fills in what the base skill leaves open:
+
+- **Setup** — a project-local `./.worktrees/` root (git-ignored, inside the repo
+  so the sandbox can write to it), a branch cut from the freshly-fetched
+  integration branch, a real dependency install in the worktree, and a baseline
+  verification run before the first task.
+- **Staying isolated** — a worktree has its own `HEAD`, not its own repository.
+  Branches, tags, the object store and `refs/stash` all live in the shared
+  `.git`, so `cd`-ing into a worktree is not enough. The skill names the four
+  command classes that reach back out (escape hatches like `git -C` and absolute
+  paths into root, shared-ref writes, history pruning, sibling-worktree removal)
+  and requires every subagent dispatch to carry the absolute worktree path and
+  verify `git rev-parse --show-toplevel` before its first write.
+- **Never symlinking `node_modules`** to the root checkout's — installs write
+  *through* the link and mutate the root's tree.
 
 ## Requirements
 
@@ -69,7 +83,7 @@ superpowers-enhance: executing-plans-enhance applied over superpowers:executing-
 ```
 
 That line is emitted by the hook at the moment of injection. No line means the
-override did not fire.
+supplement did not fire.
 
 ## How it works
 
@@ -80,14 +94,17 @@ mapping table and, on a match, injects the enhance skill's full text as
 
 Two details matter:
 
-**PostToolUse, not PreToolUse.** Injecting *after* the base skill puts the
-override later in the context window, which is what makes "where this conflicts,
-this one wins" hold.
+**PostToolUse, not PreToolUse.** A supplement should be read *after* the thing it
+supplements: the enhance skills scope themselves by reference ("for step 3", "for
+the setup steps"), and that scoping only resolves against base-skill text the
+model has already read.
 
-**Full text, not a suggestion.** These are overrides, so the hook injects the
-skill body rather than asking the model to invoke it. The YAML frontmatter is
-stripped — it only tells the model whether to invoke the skill, and the hook has
-already made that call.
+**The hook is the only delivery path.** Both enhance skills carry
+`disable-model-invocation: true`, so the model never invokes them on its own —
+the hook injects the skill body instead. You can still run `/brainstorm-enhance`
+or `/executing-plans-enhance` by hand to re-read one. The YAML frontmatter is
+stripped before injection: it only governs invocation, which the hook has already
+settled.
 
 The injection happens **once per context**, not once per invocation. Three of the
 four base skills map to the same enhance skill, so without this a single plan run
@@ -99,11 +116,11 @@ directory and is pruned after 7 days.
 
 **Compaction releases the claim.** The claim file outlives the context window it
 guards, so once compaction evicts the injected text the hook would otherwise stay
-silent and the base skill would quietly win the rest of the session. The
+silent and the rest of the session would run on the base skill alone. The
 `PostCompact` hook deletes that session's claims, and the next invocation injects
 again. `PostCompact` carries no `agent_id`, so every context of the session is
 released together — a redundant re-injection costs a few thousand tokens, a
-missing one costs the override.
+missing one costs the supplement.
 
 ## Troubleshooting
 
@@ -116,7 +133,7 @@ last `:`, so `superpowers:brainstorming` and a personal `brainstorming` skill
 both trigger it.
 
 **The hook cannot read a `SKILL.md`.** It writes the path and error to stderr and
-stays silent rather than injecting a partial override.
+stays silent rather than injecting a partial supplement.
 
 ## Layout
 
@@ -132,8 +149,9 @@ skills/
   executing-plans-enhance/SKILL.md
 ```
 
-To add another override: drop a `SKILL.md` under `skills/`, then add the base
-skill name to `ENHANCE_FOR` in `hooks/skill-enhance.py`.
+To add another enhance skill: drop a `SKILL.md` under `skills/` with
+`disable-model-invocation: true`, then add the base skill name to `ENHANCE_FOR`
+in `hooks/skill-enhance.py`.
 
 ## License
 

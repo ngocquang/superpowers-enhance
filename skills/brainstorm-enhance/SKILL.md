@@ -1,16 +1,17 @@
 ---
 name: brainstorm-enhance
-description: "Invoke this whenever the superpowers:brainstorming skill is activated — always invoke both together."
+description: "Supplement to superpowers:brainstorming — supplies the clarifying-question phase (step 3) as frontier rounds via AskUserQuestion. Delivered by the superpowers-enhance hook; invoke manually only to re-read it."
+disable-model-invocation: true
 ---
 
 # Brainstorming
 
-## Scope — what this replaces, what it does not
+## Scope — one step, everything else unchanged
 
-This replaces **only** the clarifying-question phase of superpowers:brainstorming
-(checklist step 3, "ask questions one at a time" / "only one question per
-message"). Where that skill says one question per message, **this skill wins**:
-ask in rounds, via AskUserQuestion.
+This skill supplies **one** step of superpowers:brainstorming: the
+clarifying-question phase, checklist step 3 ("ask questions one at a time" /
+"only one question per message"). For that step — and only that step — use the
+method below instead: ask in rounds, via AskUserQuestion.
 
 Everything else in superpowers:brainstorming is untouched and still mandatory:
 
@@ -97,7 +98,7 @@ approaches) and follow it through to writing-plans.
 
 | Thought | Reality |
 |---|---|
-| "I'll just ask this one question first" | That is brainstorming's rule, not this one. Ask the whole frontier. |
+| "I'll just ask this one question first" | That is the base skill's default for step 3; this is the step that runs in rounds. Ask the whole frontier. |
 | "I'll ask everything at once to save turns" | Questions downstream of an open question belong to a later round. |
 | "Markdown is faster than the tool" | Speed is not the predicate. Enumerable answers → AskUserQuestion. |
 | "They might want an answer I didn't list" | The tool already gives them "Other". Use the tool. |

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""PostToolUse(Skill) hook: inject the enhance skill that overrides the base skill.
+"""PostToolUse(Skill) hook: inject the enhance skill that supplements the base skill.
 
-The enhance skills are overrides, not suggestions — so the hook injects their
-full text as additionalContext instead of asking the model to invoke them.
-Injecting on PostToolUse puts the override *after* the base skill in context.
+The enhance skills carry `disable-model-invocation`, so the model cannot invoke
+them itself — this hook is their delivery path. It injects their full text as
+additionalContext. Injecting on PostToolUse puts the supplement *after* the base
+skill in context, so its scoping ("for step 3", "for the setup steps") resolves
+against text the model has already read.
 
-Also runs on PostCompact, where it releases the session's claims so an override
+Also runs on PostCompact, where it releases the session's claims so a supplement
 evicted by compaction is injected again on the next invocation.
 """
 
@@ -69,12 +71,12 @@ def claim(payload, enhance):
 def release(payload):
     """Drop this session's claims so the next invocation injects again.
 
-    Compaction can evict the injected override from the context window, but the
-    claim file outlives it — so the hook would stay silent and the base skill
-    would quietly win the rest of the session. PostCompact carries no agent_id
+    Compaction can evict the injected supplement from the context window, but the
+    claim file outlives it — so the hook would stay silent and the rest of the
+    session would run on the base skill alone. PostCompact carries no agent_id
     (the payload is built without a tool-use context), so every context of the
     session is released together. A redundant re-injection costs a few thousand
-    tokens; a missing one costs the override.
+    tokens; a missing one costs the supplement.
     """
     session_id = payload.get("session_id", "")
     if not session_id:
@@ -127,8 +129,9 @@ def main():
     context = (
         "<EXTREMELY_IMPORTANT>\n"
         f"You just invoked `{invoked}`. The `superpowers-enhance:{enhance}` skill "
-        "below overrides parts of it and is MANDATORY — follow it as written, and "
-        "where it conflicts with the skill you just read, this one wins.\n\n"
+        "below is a REQUIRED supplement to it: it adds detail and tightens "
+        "specific steps, and does not replace the skill you just read. Follow "
+        "that skill in full, and follow this one for the steps it names.\n\n"
         f"{body}\n"
         "</EXTREMELY_IMPORTANT>"
     )

@@ -1,15 +1,21 @@
 ---
 name: executing-plans-enhance
-description: Use when about to execute a written implementation plan, or when superpowers:executing-plans, superpowers:subagent-driven-development, or superpowers:using-git-worktrees is invoked — including when a sandbox denial, permission error, or "this change is small" reasoning tempts working in the current checkout.
+description: Supplement to superpowers:executing-plans, subagent-driven-development and using-git-worktrees — specifies the worktree setup those skills leave open, and keeps plan tasks from reaching the main checkout. Delivered by the superpowers-enhance hook; invoke manually only to re-read it.
+disable-model-invocation: true
 ---
 
 # Executing Plans — Enhance
 
 ## Overview
 
-Plan execution happens on its own branch, in its own worktree. Always. This skill
-overrides the escape hatches in superpowers:using-git-worktrees that let an agent
-degrade to working in the current checkout.
+Plan execution happens on its own branch, in its own worktree. Always.
+
+Every step of superpowers:executing-plans, superpowers:subagent-driven-development
+and superpowers:using-git-worktrees still runs, unchanged. This skill adds to two
+of them: it declines the latitude using-git-worktrees grants to degrade to the
+current checkout when setup fails, and it fills in the setup that skill leaves
+open (where the worktree lives, how dependencies are wired, what stays off-limits
+once you are inside it).
 
 **Core principle:** No isolated workspace, no execution. When isolation fails,
 escalate to your human partner — never continue in place.
@@ -90,10 +96,11 @@ git worktree add "$DIR/$BRANCH" -b "$BRANCH" origin/<integration-branch>
 cd "$DIR/$BRANCH"
 ```
 
-### 3. Wire dependencies — pnpm installs, the rest may symlink
+### 3. Install dependencies in the worktree
 
-Identify the package manager from the lockfile at the repository root — the
-lockfile wins over a `packageManager` field in `package.json` if they disagree:
+A fresh worktree has no `node_modules`. Run a real install there. Identify the
+manager from the lockfile at the repository root — the lockfile wins over a
+`packageManager` field in `package.json` if they disagree:
 
 | Lockfile | Manager |
 |----------|---------|
@@ -102,55 +109,68 @@ lockfile wins over a `packageManager` field in `package.json` if they disagree:
 | `yarn.lock` | yarn |
 | `bun.lock` / `bun.lockb` | bun |
 
-#### pnpm → always install, never symlink
-
 ```bash
 [ -L node_modules ] && rm node_modules   # stale link from an earlier setup
-pnpm install
+<manager> install
 ```
 
-Drop the stale link **before** installing. An earlier setup — or a worktree you
-resumed into via step 1 — may have left a symlinked `node_modules` behind, and
-installing over it writes straight into the root checkout's tree.
+**Never symlink `node_modules` to the root checkout's.** Installs write *through*
+the link and mutate the root's tree — the exact isolation breach this skill exists
+to prevent — and in a pnpm repo, whose `node_modules` is itself a tree of symlinks
+into `node_modules/.pnpm`, every resolved dependency path points back at the root's
+store. Drop a stale link **before** installing: a worktree you resumed into via
+step 1 may carry one from an older setup.
 
-This holds whether or not the root checkout already has a `node_modules` — seeing
-one there is not a reason to reach for the symlink. pnpm's `node_modules` is a tree
-of symlinks into `node_modules/.pnpm`; layering another symlink over it points every
-resolved dependency path back into the root checkout's store, and any later install
-writes *through* the link and mutates the root's tree. The install is cheap:
-packages hardlink from pnpm's global store, so nothing is re-downloaded.
-
-#### npm / yarn / bun → the manifest diff decides
-
-```bash
-git diff --quiet origin/<integration-branch> -- package.json <lockfile>
-```
-
-| Manifests | Do this |
-|-----------|---------|
-| Identical (exit 0) | Symlink — instant, zero disk |
-| Differ (exit 1) | Real install in the worktree |
-
-```bash
-ROOT=$(git worktree list --porcelain | head -1 | cut -d' ' -f2)
-ln -s "$ROOT/node_modules" node_modules
-```
-
-If the root checkout has no `node_modules`, there is nothing to link — run the
-project's install command in the worktree instead.
-
-**Symlinking is sandbox-permitted** because both the link and its target sit under
-the repository root, which is in the sandbox's writable roots. Verified: `ln -s`
-plus read-through both succeed under the default sandbox.
-
-**A symlinked `node_modules` is shared with the root checkout.** Anything installed
-in the worktree writes *through* the link and mutates the root's tree. That is why
-the manifest diff decides — when the branch touches dependencies, install for real.
+Installing for real is cheap — pnpm and bun hardlink from a global store, npm and
+yarn hit their local cache. A poisoned root checkout is not.
 
 ### 4. Baseline
 
 Run the project's verification gate before touching plan tasks. A dirty baseline
 makes every later failure ambiguous.
+
+## Staying Isolated: One `.git`, Many Worktrees
+
+A worktree gives you your own working directory and your own `HEAD`. It does not
+give you your own repository:
+
+```
+git rev-parse --git-dir         → <root>/.git/worktrees/<name>   # yours
+git rev-parse --git-common-dir  → <root>/.git                    # everyone's
+```
+
+Branches, tags, remotes, the object store, the reflog and `refs/stash` all live in
+the common dir. A stash taken in the root checkout appears as `stash@{0}` inside
+your worktree — one `git stash pop` there and the other session's work is gone.
+
+**Never run these during plan execution, in any session, from any directory:**
+
+| Class | Commands | What it reaches |
+|-------|----------|-----------------|
+| Escape hatches — any command, not just git | `git -C <path>`, `--git-dir` / `--work-tree`, `GIT_DIR` / `GIT_WORK_TREE`, and in plain Bash: `cd` out of the worktree, `../` traversal, absolute paths into the root checkout | Nothing alone — they make your cwd irrelevant, which is how every row below lands on root. Reading through them is fine; never let one carry a write. |
+| Shared refs | `git branch -D` / `-f`, `git push --force`, `git push --delete`; `git stash pop` / `drop` / `clear` on an entry you did not create | Sibling sessions' branches and stashed work |
+| Shared history | `git gc --prune=now`, `git reflog expire --all` | The only recovery path from the row above |
+| Sibling worktrees | `git worktree remove --force`, `git worktree prune` | Another session's checkout, mid-task |
+
+Your own worktree is yours: commit, rebase your branch, `reset --hard` your own
+HEAD, `clean` your own tree, stash work *you* created. The line is whether the
+effect can reach outside your working directory.
+
+Before any write-side git command, confirm where you are:
+
+```bash
+git rev-parse --show-toplevel   # must be the worktree path, not the repo root
+```
+
+### Subagents
+
+Isolation is not inherited. A subagent may start in the root checkout even when
+you dispatched it from the worktree.
+
+- Every dispatch prompt states the **absolute worktree path** and says to work only there.
+- Before its first write, the subagent runs `git rev-parse --show-toplevel` and
+  compares. Mismatch → stop and report; never `cd` into root and continue.
+- The command table above binds subagents exactly as it binds you.
 
 ## When a Command Actually Fails
 
@@ -169,16 +189,24 @@ Do not invent a teardown flow. Hand off to **superpowers:finishing-a-development
 for merge and cleanup. Merges into root are fast-forward only; if it will not
 fast-forward, rebase the branch in the worktree and retry. Never force.
 
+That merge — and removing your own worktree — is the one sanctioned touch of the
+root checkout. It comes after the last task, never during one.
+
 ## Rationalizations
 
 | Excuse | Reality |
 |--------|---------|
-| "using-git-worktrees says to fall back to the current directory on a sandbox denial" | That clause is overridden by this skill. The repo root is writable, so worktree creation succeeds; a denial means a wrong path, not a reason to work in place. |
+| "using-git-worktrees says to fall back to the current directory on a sandbox denial" | That clause is an allowance, and this skill declines it. The repo root is writable, so worktree creation succeeds; a denial means a wrong path, not a reason to work in place. |
 | "They declined the worktree, but the Iron Rule says no exceptions" | Step 0 consent is real, and their answer outranks this skill. Tell them what it costs, then do as they asked. This is the one exception; a sandbox denial is not. |
 | "I'm already on a feature branch, that's enough isolation" | A branch is not a worktree. The root checkout must stay on the integration branch so parallel sessions do not collide. |
 | "The plan is 2 tasks / one file — a worktree is overkill" | Setup is three commands plus a dependency step. Size never changes the rule. |
-| "Root already has `node_modules`, I'll just link it" | Not in a pnpm repo. A visible `node_modules` is not a signal to symlink — the lockfile decides. |
-| "`pnpm install` will re-download everything" | It hardlinks from the global store. Cost is near zero; a poisoned root checkout is not. |
+| "Root already has `node_modules`, I'll just link it" | The link is a write channel into the root checkout. Install in the worktree. |
+| "The install will re-download everything" | pnpm and bun hardlink from a global store; npm and yarn hit their cache. Cost is near zero; a poisoned root checkout is not. |
+| "I'm inside the worktree, so any git command is safe" | cwd scopes files, not refs. Branches, stash and the object store are shared — the command table lists what reaches out. |
+| "I just need to read root's branch, `git -C` is harmless" | Reading is fine. The habit is not: the same handle is one flag away from a write, and that is how every root-mutation incident starts. |
+| "Root drifted off the integration branch, I'll switch it back for them" | That is a write into another session's checkout. Report it; do not reach in. |
+| "The stash is right there, it must be mine" | `refs/stash` is one stack shared by every worktree. If `git stash list` shows entries you did not create, do not touch it. |
+| "The subagent runs in my worktree, it inherits the cwd" | Do not assume. Put the absolute path in the prompt and have it verify before writing. |
 | "I'll create the worktree after I confirm the approach works" | The confirmation edits land in the root checkout. Worktree first. |
 | "No native worktree tool here, so I'll skip it" | `git worktree add` is the documented fallback. Missing tooling is not missing isolation. |
 
@@ -187,8 +215,11 @@ fast-forward, rebase the branch in the worktree and retry. Never force.
 - About to edit a file whose path starts at the repository root during plan execution
 - Thinking "sandbox blocked it, so I'll work here instead"
 - `git branch --show-current` in the root checkout returns something other than the integration branch
-- About to symlink `node_modules` in a repo that has a `pnpm-lock.yaml`
-- Running an install in a worktree whose `node_modules` is a symlink — whenever it was made
-- Symlinking `node_modules` when the root checkout has none — the link dangles
+- About to symlink `node_modules`, or running an install in a worktree whose `node_modules` is a symlink
+- Typing `git -C`, `--git-dir`, `--work-tree`, or a path starting at the repository root into a git command
+- A Bash call that `cd`s out of the worktree, traverses `../`, or names an absolute path into the root checkout
+- `git stash list` shows entries you did not create — and `pop` or `drop` is the next word
+- About to run `git worktree remove` / `prune`, `git gc`, or `git push --force` during plan execution
+- Dispatching a subagent whose prompt does not carry the absolute worktree path
 
 **All of these mean: stop, set up the worktree, move the work there.**
