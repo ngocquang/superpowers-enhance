@@ -44,10 +44,11 @@ follows; a worktree that *fails* is not.
 
 It also fills in what the base skill leaves open:
 
-- **Setup** — a project-local `./.worktrees/` root (git-ignored, inside the repo
+- **Setup** — a fixed `./worktrees/` root (git-ignored, inside the repo
   so the sandbox can write to it), a branch cut from the freshly-fetched
-  integration branch, a real dependency install in the worktree, and a baseline
-  verification run before the first task.
+  integration branch, *entered* through the harness's own tool (`EnterWorktree`
+  with `path:`) rather than a bare `cd`, a real dependency install in the
+  worktree, and a baseline verification run before the first task.
 - **Staying isolated** — a worktree has its own `HEAD`, not its own repository.
   Branches, tags, the object store and `refs/stash` all live in the shared
   `.git`, so `cd`-ing into a worktree is not enough. The skill names the four
@@ -57,6 +58,15 @@ It also fills in what the base skill leaves open:
   verify `git rev-parse --show-toplevel` before its first write.
 - **Never symlinking `node_modules`** to the root checkout's — installs write
   *through* the link and mutate the root's tree.
+- **Getting back out** — from Claude Code 2.1.237 the harness enforces the
+  isolation itself: an entered worktree has every git command aimed at the root
+  checkout refused at the tool layer, reads included, and disabling the sandbox
+  does not lift it. That also blocks the merge that
+  `superpowers:finishing-a-development-branch` runs from root. The skill supplies
+  the sanctioned route — `ExitWorktree` with `action: "keep"`, then a
+  fast-forward-only merge and cleanup from root — plus the values that skill's
+  Step 2 can no longer probe for itself, and a clean handoff for the case where
+  the session cannot leave at all.
 
 ## Requirements
 
