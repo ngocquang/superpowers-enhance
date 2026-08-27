@@ -29,8 +29,21 @@ the first option. Questions downstream of an open decision wait for the next
 round. Facts the agent could look up itself are never asked; they are dispatched
 to a sub-agent.
 
-Everything else in `superpowers:brainstorming` is untouched, including the hard
-gate that blocks any code before an approved design.
+It also routes the task to a **playbook**. Six of them ship — `feature`,
+`bug-fix`, `refactoring`, `investigation`, `prototype`, `new-project` — and the
+matched one is copied into the todo list verbatim before any task-specific todo.
+Each names the decision axes the frontier must cover, the facts to dispatch
+instead of ask, the spec sections that kind of task requires, and its own red
+flags. No playbook fits? The skill says so and runs the plain design-tree method
+rather than stretching the task onto the nearest one.
+
+A playbook shapes *content*, never ceremony: classifying the request as spike,
+bounded or architectural stays entirely the base skill's call.
+
+This skill supplies the clarifying-question step and **adds** required sections
+to the design doc. It replaces nothing else in `superpowers:brainstorming` and
+skips no step of it, including the hard gate that blocks any code before an
+approved design.
 
 ### `executing-plans-enhance` — worktree isolation, no fallback
 
@@ -109,6 +122,12 @@ supplements: the enhance skills scope themselves by reference ("for step 3", "fo
 the setup steps"), and that scoping only resolves against base-skill text the
 model has already read.
 
+**The wrapper names the skill's directory.** The injected body has no idea where
+on disk it came from, so the hook prefixes it with a resolved
+`Skill directory: <absolute path>` line. That is what makes
+`brainstorm-enhance`'s `playbooks/` reachable. The line is emitted for every
+enhance skill, not only ones that reference files.
+
 **The hook is the only delivery path.** Both enhance skills carry
 `disable-model-invocation: true`, so the model never invokes them on its own —
 the hook injects the skill body instead. You can still run `/brainstorm-enhance`
@@ -155,7 +174,9 @@ hooks/
   hooks.json            PostToolUse(Skill) + PostCompact registration
   skill-enhance.py      mapping table, injection, compaction release
 skills/
-  brainstorm-enhance/SKILL.md
+  brainstorm-enhance/
+    SKILL.md
+    playbooks/          six task-type playbooks, read only when matched
   executing-plans-enhance/SKILL.md
 ```
 

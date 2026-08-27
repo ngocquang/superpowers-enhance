@@ -1,7 +1,7 @@
 {
   "name": "superpowers-enhance",
   "description": "Supplement layer for the superpowers skills — it changes nothing in them and never skips a step of one. A PostToolUse hook injects a matching *-enhance skill right after its base skill is invoked: brainstorming asks its clarifying questions in AskUserQuestion rounds instead of one at a time, and plan execution (executing-plans, subagent-driven-development, using-git-worktrees) is locked to a dedicated branch + worktree, with the git commands that reach back into the main checkout ruled out.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "author": {
     "name": "QuangDN"
   },
