@@ -1,27 +1,80 @@
 ---
 name: brainstorm-enhance
-description: "Supplement to superpowers:brainstorming — supplies the clarifying-question phase (step 3) as frontier rounds via AskUserQuestion. Delivered by the superpowers-enhance hook; invoke manually only to re-read it."
+description: "Supplement to superpowers:brainstorming — supplies the clarifying-question phase (step 3) as frontier rounds via AskUserQuestion, routed by a task-type playbook that also names the sections the design doc (step 6) must carry. Delivered by the superpowers-enhance hook; invoke manually only to re-read it."
 disable-model-invocation: true
 ---
 
 # Brainstorming
 
-## Scope — one step, everything else unchanged
+## Scope — two steps, everything else unchanged
 
-This skill supplies **one** step of superpowers:brainstorming: the
-clarifying-question phase, checklist step 3 ("ask questions one at a time" /
-"only one question per message"). For that step — and only that step — use the
-method below instead: ask in rounds, via AskUserQuestion.
+This skill touches **two** steps of superpowers:brainstorming.
+
+**Step 3, the clarifying-question phase** ("ask questions one at a time" / "only
+one question per message"). For that step the method below *replaces* the base
+skill's: ask in rounds, via AskUserQuestion.
+
+**Step 6, the design doc.** A matched playbook names sections that this kind of
+task's spec must carry. Those are **added** to the sections the base skill
+already asks for. Nothing of the base skill's is replaced or dropped.
 
 Everything else in superpowers:brainstorming is untouched and still mandatory:
 
 - Steps 1–2 (explore project context, offer the visual companion just-in-time)
-  run **before** the first round.
+  run **before** the first round. Playbook matching happens between them and the
+  first round.
 - Steps 4–9 (propose 2–3 approaches → present design → write the spec doc →
   spec self-review → user reviews the spec → invoke writing-plans) run **after**
   the questioning ends, in that order.
+- Classifying the request as spike, bounded or architectural stays the base
+  skill's call. A playbook decides content, never ceremony.
 - The `<HARD-GATE>` still holds: no code, no scaffolding, no implementation
   skill until the user has approved a design.
+
+## Playbooks
+
+A playbook fixes the *content* of the questioning for one kind of task: which
+decision axes the frontier must cover, which facts you go and find instead of
+asking, and which sections that task type's spec must carry.
+
+Playbooks live in `playbooks/`, inside this skill's own directory. The injected
+wrapper above names that directory's absolute path on a `Skill directory:` line;
+if you invoked this skill by hand instead, it is the base directory the harness
+announced.
+
+### Match
+
+After step 1 (explore project context) and before the first round, match the
+task against this table and say out loud which playbook matched.
+
+| Playbook | Matches when |
+|---|---|
+| `feature.md` | New or changed behavior in code that already exists |
+| `bug-fix.md` | A reported defect to reproduce and root-cause |
+| `refactoring.md` | A behavior-preserving change to structure or shape |
+| `investigation.md` | A read-only question whose output is an answer, not a change |
+| `prototype.md` | A design or empirical fork to settle by building something throwaway |
+| `new-project.md` | A new repo, service or subsystem with no existing flow to read |
+
+**Two of them fit?** One is primary — copy that one in. Name the second out loud
+and fold its decision axes into the tree with a stated reason. Do not copy two
+playbooks in.
+
+**None fit?** Say `no playbook matched`, then run the plain design-tree method
+below. Do not stretch the task onto the nearest playbook, and do not invent one.
+
+### Apply
+
+Open the matched file and copy its items into your todo list **verbatim, before
+any task-specific todo and before you reason about the task**. The failure this
+guards against is reading a playbook, agreeing with it, and then writing your own
+plan that quietly drops half of it.
+
+An item you decide not to do stays in the list with `skip: <reason>`. Dropping
+one silently is not allowed.
+
+On the bounded and spike paths there is no spec file, so the playbook's
+**Spec sections** list is read as a checklist for the short in-chat design.
 
 ## The design tree
 
@@ -107,3 +160,5 @@ approaches) and follow it through to writing-plans.
 | "The sub-agent is still running, I'll wait" | Only the downstream questions wait. Ask the rest now. |
 | "Frontier looks empty enough, let's design" | Empty means empty. Name every remaining branch first. |
 | "They approved the last round, I can start coding" | The HARD-GATE needs an approved *design*, not answered questions. |
+| "I read the playbook, I'll keep it in mind" | Copy its items into the todo list verbatim. Keeping it in mind is the failure mode. |
+| "No playbook is a perfect fit, I'll use the closest one" | Say `no playbook matched` and run the plain method. A wrong playbook asks the wrong axes. |
