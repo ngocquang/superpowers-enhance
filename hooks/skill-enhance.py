@@ -3,7 +3,8 @@
 
 The enhance skills carry `disable-model-invocation`, so the model cannot invoke
 them itself — this hook is their delivery path. It injects their full text as
-additionalContext. Injecting on PostToolUse puts the supplement *after* the base
+additionalContext, prefixed by the skill's resolved directory so the injected
+body can reference files on disk. Injecting on PostToolUse puts the supplement *after* the base
 skill in context, so its scoping ("for step 3", "for the setup steps") resolves
 against text the model has already read.
 
@@ -118,7 +119,8 @@ def main():
         return
 
     plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    skill_path = os.path.join(plugin_root, "skills", enhance, "SKILL.md")
+    skill_dir = os.path.join(plugin_root, "skills", enhance)
+    skill_path = os.path.join(skill_dir, "SKILL.md")
     try:
         with open(skill_path, encoding="utf-8") as f:
             body = strip_frontmatter(f.read())
@@ -132,6 +134,9 @@ def main():
         "below is a REQUIRED supplement to it: it adds detail and tightens "
         "specific steps, and does not replace the skill you just read. Follow "
         "that skill in full, and follow this one for the steps it names.\n\n"
+        f"Skill directory: {skill_dir}\n"
+        "Files the skill below references (`playbooks/`, `references/`) live in "
+        "that directory. Build an absolute path from it to read one.\n\n"
         f"{body}\n"
         "</EXTREMELY_IMPORTANT>"
     )
